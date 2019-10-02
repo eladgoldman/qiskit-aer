@@ -225,7 +225,107 @@ for couple in qubits_couples:
 (estimated_schmidt_rank, _) = mps_running_time_estimator(qc)
 print("estimated_schmidt_rank = " + str(estimated_schmidt_rank))
 
+import sys
+sys.path.insert(0, "/gpfs/haifa/projects/q/qq/team/yotamvak/qiskit-terra/")
+sys.path.insert(0, "/gpfs/haifa/projects/q/qq/team/yotamvak/qiskit-aqua/")
+
+from tqdm import tqdm_notebook as tqdm
+from qiskit import Aer
+from qiskit.providers.aer import aerbackend
+from qiskit.providers.aer.utils import qobj_utils
+from qiskit.qobj import (QasmQobj, QobjExperimentHeader,
+                         QasmQobjInstruction,
+                         QasmQobjExperimentConfig,
+                         QasmQobjExperiment,
+                         QasmQobjConfig)
+#from qiskit.qobj.models.qasm import QasmQobjInstruction, QasmQobjExperiment
+from qiskit.qobj.models.base import QobjHeader
+import numpy as np
+from qiskit import QuantumRegister, ClassicalRegister, QuantumCircuit, execute
+import copy
+from copy import deepcopy
+from pprint import pprint
+
+from qiskit.assembler import assemble_circuits, run_config
+from qiskit.assembler.run_config import RunConfig
+
+from qiskit.chemistry import FermionicOperator
+from qiskit.chemistry.drivers import PySCFDriver, UnitsType
+import numpy as np
+from tqdm import tqdm_notebook as tqdm
+from qiskit.chemistry import QiskitChemistry
+from qiskit import *
+from qiskit.providers.aer import * 
+from qiskit.aqua import QuantumInstance
+backend = Aer.get_backend("qasm_simulator")
+tensor_qi = QuantumInstance(backend, backend_options = {"method": "tensor_network"})
+statevector_qi = QuantumInstance(backend, backend_options = {"method": "statevector"})
+from time import time
+from qiskit.aqua.components.variational_forms import RYRZ
+import matplotlib.pyplot as plt
+
+from qiskit.chemistry import FermionicOperator
+from qiskit.chemistry.drivers import PySCFDriver, UnitsType
+
+# Use PySCF, a classical computational chemistry software
+# package, to compute the one-body and two-body integrals in
+# molecular-orbital basis, necessary to form the Fermionic operator
+# driver = PySCFDriver(atom='H .0 .0 .0; N .0 .0 1; H 0 0 2; H 0 1 1; H 0 -1 1; H 0 -1 2',
+driver = PySCFDriver(atom='H .0 .0 .0; H .0 .0 1; H 0 0 2; H 0 0 3; H 0 0 4; H 0 0 5',
+# driver = PySCFDriver(atom='H .0 .0 .0; H .0 .0 1;',
+                    unit=UnitsType.ANGSTROM,
+                    basis='sto3g')
+molecule = driver.run()
+num_particles = molecule.num_alpha + molecule.num_beta
+num_spin_orbitals = molecule.num_orbitals * 2
+
+# Build the qubit operator, which is the input to the VQE algorithm in Aqua
+ferOp = FermionicOperator(h1=molecule.one_body_integrals, h2=molecule.two_body_integrals)
+map_type = 'PARITY'
+qubitOp = ferOp.mapping(map_type)
+qubitOp = qubitOp.two_qubit_reduced_operator(num_particles)
+num_qubits = qubitOp.num_qubits
+print(num_qubits)
 
 
- 
+ferOp = FermionicOperator(h1=molecule.one_body_integrals, h2=molecule.two_body_integrals)
+operators = ferOp.mapping(map_type)
+operators = operators.two_qubit_reduced_operator(num_particles)
+num_qubits = qubitOp.num_qubits
+
+from qiskit.chemistry.aqua_extensions.components.initial_states import HartreeFock
+init_state = HartreeFock(num_qubits, num_spin_orbitals, num_particles)
+
+from qiskit.aqua.components.optimizers import L_BFGS_B, NELDER_MEAD,COBYLA
+optimizer = NELDER_MEAD(100, 100)
+
+from qiskit.aqua.components.variational_forms import RYRZ
+index = 0
+class _RYRZ(RYRZ):
+    def construct_circuit(*args, **kwargs):
+        global index
+        print(index, end="\t")
+        index += 1
+        return RYRZ.construct_circuit(*args, **kwargs)
+var_form = RYRZ(num_qubits, initial_state=init_state)
+
+# instructions = []
+
+# final_val = 0
+# new_instr_1 = QasmQobjInstruction(name="snapshot",
+#                             type= "expectation_value_matrix",
+#                             label= "energy",
+#                             qubits=range(num_qubits),
+#                             params= [[[1,0], [[list(range(num_qubits)), qubitOp.matrix.toarray()]]]])
+
+# instructions.append(new_instr_1)
+    
+bounds = var_form.parameter_bounds
+low = [(l if l is not None else -2 * np.pi) for (l, u) in bounds]
+high = [(u if u is not None else 2 * np.pi) for (l, u) in bounds]
+initial_point = np.random.uniform(low, high)
+
+qc = var_form.construct_circuit(initial_point)
+
+
 
