@@ -15,7 +15,7 @@
 // The density-matrix renormalization group in the age of matrix product states by 
 // Ulrich Schollwock.
 //
-//--------------------------------------------------------------------------
+//-------------------------------------------------------------------------
 
 #ifndef _tensor_tensor_state_hpp
 #define _tensor_tensor_state_hpp
